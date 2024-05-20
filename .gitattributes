@@ -1,0 +1,12 @@
+# Define arquivos SQL como texto com finais de linha Unix (LF)
+*.sql text eol=lf
+
+# Define arquivos de dump do MySQL como binários para evitar alterações de finais de linha
+*.dump binary
+*.sql.gz binary
+*.sql.zip binary
+
+# Se você estiver usando arquivos de configuração YAML ou JSON para sua configuração de banco de dados
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
