@@ -1,0 +1,171 @@
+# core/models/projeto.py
+from django.db import models
+
+
+class SiglaBase(models.Model):
+    nome = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.nome
+
+
+class SiglaModulo(models.Model):
+    nome = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.nome
+
+
+class Projeto(models.Model):
+    STATUS_CHOICES = models.TextChoices("Status", [("ativo", "Ativo"), ("desativado", "Desativado")])
+
+    nome = models.CharField(max_length=100, unique=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES.choices, default="ativo")
+    sigla_base = models.ForeignKey(SiglaBase, on_delete=models.SET_NULL, null=True, blank=True)
+    sigla_modulo = models.ForeignKey(SiglaModulo, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return self.nome
+
+
+# core/models/ferramenta.py
+class Ferramenta(models.Model):
+    nome = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return self.nome
+
+
+# core/models/projeto_ferramenta.py
+class ProjetoVeracode(models.Model):
+    projeto = models.OneToOneField(Projeto, on_delete=models.CASCADE, related_name="veracode")
+    workspace_id = models.CharField(max_length=100)
+    project_id_api = models.CharField(max_length=100, unique=True)
+    linguagem = models.CharField(max_length=50, null=True, blank=True)
+    data_ultimo_scan = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.projeto.nome} [Veracode]"
+
+
+class ProjetoPrisma(models.Model):
+    projeto = models.OneToOneField(Projeto, on_delete=models.CASCADE, related_name="prisma")
+    project_id_api = models.CharField(max_length=100, unique=True)
+    cluster = models.CharField(max_length=100)
+    namespace = models.CharField(max_length=100)
+    imagem = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.projeto.nome} [Prisma]"
+
+
+class ProjetoOsvScanner(models.Model):
+    projeto = models.OneToOneField(Projeto, on_delete=models.CASCADE, related_name="osv")
+    repositorio = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.projeto.nome} [OSV]"
+
+
+# core/models/scan.py
+class TipoScan(models.TextChoices):
+    SCA = "SCA", "SCA"
+    SAST = "SAST", "SAST"
+    IMAGE = "IMAGE", "Imagem"
+
+
+class Scan(models.Model):
+    projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name="scans")
+    ferramenta = models.ForeignKey(Ferramenta, on_delete=models.PROTECT, related_name="scans")
+    tipo = models.CharField(max_length=10, choices=TipoScan.choices)
+    branch = models.CharField(max_length=100, null=True, blank=True)
+    commit = models.CharField(max_length=100, null=True, blank=True)
+    tag = models.CharField(max_length=100, null=True, blank=True)
+    data_execucao = models.DateTimeField()
+    scan_id_api = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return f"{self.projeto.nome} - {self.ferramenta.nome} - {self.tipo}"
+
+
+# core/models/vulnerabilidade.py
+class Vulnerabilidade(models.Model):
+    scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name="vulnerabilidades")
+    external_id = models.CharField(max_length=100)  # ID único vindo da ferramenta
+    titulo = models.CharField(max_length=255)
+    descricao = models.TextField(null=True, blank=True)
+    severidade = models.CharField(max_length=50)
+    linguagem = models.CharField(max_length=50, null=True, blank=True)
+    arquivo_afetado = models.CharField(max_length=255, null=True, blank=True)
+    cve = models.CharField(max_length=50, null=True, blank=True)
+    cwe = models.CharField(max_length=50, null=True, blank=True)
+
+    class Meta:
+        unique_together = ("scan", "external_id")
+
+    def __str__(self):
+        return f"{self.titulo} ({self.external_id})"
+
+
+
+from django.contrib import admin
+from .models import (
+    Projeto, SiglaBase, SiglaModulo,
+    ProjetoVeracode, ProjetoPrisma, ProjetoOsvScanner,
+    Ferramenta, Scan, Vulnerabilidade
+)
+
+
+@admin.register(SiglaBase)
+class SiglaBaseAdmin(admin.ModelAdmin):
+    search_fields = ['nome']
+    list_display = ['nome']
+
+
+@admin.register(SiglaModulo)
+class SiglaModuloAdmin(admin.ModelAdmin):
+    search_fields = ['nome']
+    list_display = ['nome']
+
+
+class ProjetoVeracodeInline(admin.StackedInline):
+    model = ProjetoVeracode
+    extra = 0
+
+
+class ProjetoPrismaInline(admin.StackedInline):
+    model = ProjetoPrisma
+    extra = 0
+
+
+class ProjetoOsvInline(admin.StackedInline):
+    model = ProjetoOsvScanner
+    extra = 0
+
+
+@admin.register(Projeto)
+class ProjetoAdmin(admin.ModelAdmin):
+    list_display = ['nome', 'status', 'sigla_base', 'sigla_modulo']
+    search_fields = ['nome']
+    list_filter = ['status', 'sigla_base', 'sigla_modulo']
+    inlines = [ProjetoVeracodeInline, ProjetoPrismaInline, ProjetoOsvInline]
+
+
+@admin.register(Ferramenta)
+class FerramentaAdmin(admin.ModelAdmin):
+    list_display = ['nome']
+    search_fields = ['nome']
+
+
+@admin.register(Scan)
+class ScanAdmin(admin.ModelAdmin):
+    list_display = ['projeto', 'ferramenta', 'tipo', 'data_execucao', 'branch', 'tag']
+    list_filter = ['tipo', 'ferramenta']
+    search_fields = ['projeto__nome', 'scan_id_api', 'tag', 'branch']
+
+
+@admin.register(Vulnerabilidade)
+class VulnerabilidadeAdmin(admin.ModelAdmin):
+    list_display = ['titulo', 'scan', 'severidade', 'cve', 'cwe']
+    search_fields = ['titulo', 'cve', 'cwe', 'external_id']
+    list_filter = ['severidade', 'scan__ferramenta__nome', 'scan__tipo']
